@@ -1,2 +1,2 @@
 # DB-Study
-MariaDB
+MariaDB와 HeidiSQL 사용
