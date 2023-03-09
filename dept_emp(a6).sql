@@ -50,123 +50,56 @@ SET regDate = NOW(),
 deptId = 2,
 salary = 4000;
 
-# 사원 수 출력
-SELECT COUNT(*)
-FROM emp;
-
-# 가장 큰 사원 번호 출력
-SELECT MAX(id)
-FROM emp;
-
-# 가장 고액 연봉
-SELECT MAX(salary)
-FROM emp;
-
-# 가장 저액 연봉
-SELECT MIN(salary)
-FROM emp;
-
-# 회사에서 1년 고정 지출(인건비)
-SELECT SUM(salary)
-FROM emp;
-
-# 부서별, 1년 고정 지출(인건비)
-SELECT deptId, SUM(salary)
-FROM emp
-GROUP BY deptId;
-
-# 부서별, 최고연봉
-SELECT deptId, MAX(salary)
-FROM emp
-GROUP BY deptId;
-
-# 부서별, 최저연봉
-SELECT deptId, MIN(salary)
-FROM emp
-GROUP BY deptId;
-
-# 부서별, 평균연봉
-SELECT deptId, AVG(salary)
-FROM emp
-GROUP BY deptId;
-
-# 부서별, 부서명, 사원리스트, 평균연봉, 최고연봉, 최소연봉, 사원수
-## V1(조인 안한 버전)
-
-### IF문 버전
-SELECT IF(deptId = 1, '홍보', '기획') AS `부서명`,
-GROUP_CONCAT(`name` ORDER BY id DESC SEPARATOR ', ') AS `사원리스트`,
-CONCAT(TRUNCATE(AVG(salary), 0), '만원') AS `평균연봉`,
-CONCAT(MAX(salary), '만원') AS `최고연봉`,
-CONCAT(MIN(salary), '만원') AS `최소연봉`,
-CONCAT(COUNT(*), '명') AS `사원수`
-FROM emp
-GROUP BY deptId;
-
-### CASE문을 사용하고, GROUP_CONCAT의 결과에서 중복제거도 처리도 한 버전
-SELECT CASE
-WHEN deptId = 1
-THEN '홍보'
-WHEN deptId = 2
-THEN '기획'
-ELSE '무소속'
-END AS `부서명`,
-GROUP_CONCAT(DISTINCT `name` ORDER BY id DESC SEPARATOR ', ') AS `사원리스트`,
-TRUNCATE(AVG(salary), 0) AS `평균연봉`,
-MAX(salary) AS `최고연봉`,
-MIN(salary) AS `최소연봉`,
-COUNT(*) AS `사원수`
-FROM emp
-GROUP BY deptId;
-
-## V2(조인해서 부서명까지 나오는 버전)
-SELECT D.name AS 부서,
-GROUP_CONCAT(E.name) AS 사원리스트,
-TRUNCATE(AVG(E.salary), 0) AS 평균연봉,
-MAX(E.salary) AS 최고연봉,
-MIN(E.salary) AS 최소연봉,
-COUNT(*) AS 사원수
+# 1단계 : 각 부서별 최고연봉자의 연봉을 구한다.
+SELECT E.deptId AS id,
+MAX(E.salary) AS maxSalary
 FROM emp AS E
-INNER JOIN dept AS D
-ON E.deptId = D.id
-GROUP BY E.deptId;
-
-## V3(V2에서 평균연봉이 5000이상인 부서로 추리기)
-SELECT D.name AS 부서,
-GROUP_CONCAT(E.name) AS 사원리스트,
-TRUNCATE(AVG(E.salary), 0) AS 평균연봉,
-MAX(E.salary) AS 최고연봉,
-MIN(E.salary) AS 최소연봉,
-COUNT(*) AS 사원수
-FROM emp AS E
-INNER JOIN dept AS D
-ON E.deptId = D.id
 GROUP BY E.deptId
-HAVING `평균연봉` >= 5000;
 
-## V4(V3에서 HAVING 없이 서브쿼리로 수행)
-### HINT, UNION을 이용한 서브쿼리
-# SELECT *
-# FROM (
-#     SELECT 1 AS id
-#     UNION
-#     SELECT 2
-#     UNION
-#     SELECT 3
-# ) AS A
-
-SELECT *
-FROM (
-    SELECT D.name AS `부서명`,
-    GROUP_CONCAT(E.`name`) AS `사원리스트`,
-    TRUNCATE(AVG(E.salary), 0) AS `평균연봉`,
-    MAX(E.salary) AS `최고연봉`,
-    MIN(E.salary) AS `최소연봉`,
-    COUNT(*) AS `사원수`
+# 2단계 : 사원테이블과 부서테이블(서브쿼리)을 조인한다.
+SELECT E.id,
+E.name,
+E.salary,
+D.id AS deptId,
+D.maxSalary
+FROM emp AS E
+INNER JOIN (
+    SELECT E.deptId AS id,
+    MAX(E.salary) AS maxSalary
     FROM emp AS E
-    INNER JOIN dept AS D
-    ON E.deptId = D.id
-    WHERE 1
     GROUP BY E.deptId
 ) AS D
-WHERE D.`평균연봉` >= 5000;
+ON E.deptId = D.id;
+
+# 3단계 : 사원테이블과 부서테이블(서브쿼리)을 조인할 때 사원의 연봉과 부서의 최고연봉이 일치해야한 다는 조건을 추가해서, 최고연봉자가 아닌 사람들이 자연스럽게 필터링 되도록 한다.
+SELECT E.id,
+E.name,
+E.salary,
+D.id AS deptId,
+D.maxSalary
+FROM emp AS E
+INNER JOIN (
+    SELECT E.deptId AS id,
+    MAX(E.salary) AS maxSalary
+    FROM emp AS E
+    GROUP BY E.deptId
+) AS D
+ON E.deptId = D.id
+AND E.salary = D.maxSalary; # 추가됨, 핵심
+
+# 4단계 : 추가 JOIN 을 통해서 부서명을 얻는다.
+SELECT D2.name AS `부서명`,
+E.name AS `사원명`,
+DATE(E.regDate) AS `입사일`,
+CONCAT(FORMAT(E.salary, 0), '만원') AS `연봉`
+FROM emp AS E
+INNER JOIN (
+    SELECT E.deptId AS id,
+    MAX(E.salary) AS maxSalary
+    FROM emp AS E
+    GROUP BY E.deptId
+) AS D
+ON E.deptId = D.id
+AND E.salary = D.maxSalary
+INNER JOIN dept AS D2 # 추가 조인
+ON E.deptId = D2.id;
